@@ -251,7 +251,6 @@ end
 
 -- Auto Pickup Loop
 RunService.Heartbeat:Connect(function()
-	if not AUTO_PICKUP then return end
 	if not Player.Character then return end
 	if not workspace:FindFirstChild("Items") then return end
 	
@@ -264,7 +263,7 @@ RunService.Heartbeat:Connect(function()
 		local distance = (charPos - item:GetPivot().Position).Magnitude
 		if distance > PICKUP_RADIUS then continue end
 		
-		if PICKUP_ALL or IsWhitelisted(item.Name) then
+		if PICKUP_ALL or AUTO_PICKUP or IsWhitelisted(item.Name) then
 			Packets.Pickup.send(entityID)
 		end
 	end
