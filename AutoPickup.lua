@@ -17,11 +17,15 @@ local AUTO_PICKUP_CHESTS = false
 local CHEST_PICKUP_ALL = false
 
 local PICKUP_RADIUS = 25
+local MAX_PICKUP_COUNT = 1400
+local MAX_CAP = 1500
+local pickupCount = 0
 local ItemList = {}
 local SelectedItem = nil
 
 local Whitelist = {}
 local SearchQuery = ""
+
 --// GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.ResetOnSpawn = false
@@ -118,6 +122,92 @@ RadiusBox.Parent = Content
 local SearchBox = RadiusBox:Clone()
 SearchBox.PlaceholderText = "Search Items"
 SearchBox.Parent = Content
+
+
+local SliderHolder = Instance.new("Frame")
+SliderHolder.Size = UDim2.new(1,0,0,50)
+SliderHolder.BackgroundTransparency = 1
+SliderHolder.Parent = Content
+
+local SliderLabel = Instance.new("TextLabel")
+SliderLabel.Size = UDim2.new(1,0,0,14)
+SliderLabel.BackgroundTransparency = 1
+SliderLabel.Text = "Max Pickups Per Second"
+SliderLabel.TextColor3 = Color3.new(1,1,1)
+SliderLabel.Font = Enum.Font.Gotham
+SliderLabel.TextSize = 11
+SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+SliderLabel.Parent = SliderHolder
+
+local ValueBox = Instance.new("TextBox")
+ValueBox.Size = UDim2.new(0,60,0,18)
+ValueBox.Position = UDim2.new(1,-60,0,0)
+ValueBox.Text = tostring(MAX_PICKUP_COUNT)
+ValueBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
+ValueBox.TextColor3 = Color3.new(1,1,1)
+ValueBox.BorderSizePixel = 0
+ValueBox.Font = Enum.Font.Gotham
+ValueBox.TextSize = 11
+Instance.new("UICorner", ValueBox).CornerRadius = UDim.new(0,4)
+ValueBox.Parent = SliderHolder
+
+local SliderBack = Instance.new("Frame")
+SliderBack.Size = UDim2.new(1,0,0,12)
+SliderBack.Position = UDim2.new(0,0,0,22)
+SliderBack.BackgroundColor3 = Color3.fromRGB(45,45,45)
+SliderBack.BorderSizePixel = 0
+Instance.new("UICorner", SliderBack).CornerRadius = UDim.new(1,0)
+SliderBack.Parent = SliderHolder
+
+local SliderFill = Instance.new("Frame")
+SliderFill.Size = UDim2.new(MAX_PICKUP_COUNT/MAX_CAP,0,1,0)
+SliderFill.BackgroundColor3 = Color3.fromRGB(60,140,60)
+SliderFill.BorderSizePixel = 0
+Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1,0)
+SliderFill.Parent = SliderBack
+
+local draggingslider = false
+
+local function UpdateSliderFromValue(value)
+	value = math.clamp(math.floor(value),0,MAX_CAP)
+	MAX_PICKUP_COUNT = value
+	ValueBox.Text = tostring(value)
+	SliderFill.Size = UDim2.new(value/MAX_CAP,0,1,0)
+end
+
+local function UpdateFromMouse(x)
+	local relative = (x - SliderBack.AbsolutePosition.X) / SliderBack.AbsoluteSize.X
+	local value = math.clamp(relative,0,1) * MAX_CAP
+	UpdateSliderFromValue(value)
+end
+
+SliderBack.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingslider = true
+		UpdateFromMouse(input.Position.X)
+	end
+end)
+
+SliderBack.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingslider = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if draggingslider and input.UserInputType == Enum.UserInputType.MouseMovement then
+		UpdateFromMouse(input.Position.X)
+	end
+end)
+
+ValueBox.FocusLost:Connect(function()
+	local num = tonumber(ValueBox.Text)
+	if num then
+		UpdateSliderFromValue(num)
+	else
+		ValueBox.Text = tostring(MAX_PICKUP_COUNT)
+	end
+end)
 
 -- Scroll
 local Scroll = Instance.new("ScrollingFrame")
@@ -279,14 +369,23 @@ end)
 -- AUTO PICKUP LOOP
 ---------------------------------------------------
 
+local lastReset = tick()
+
 RunService.Heartbeat:Connect(function()
 	if not Player.Character then return end
+	
+	-- Reset counter every second
+	if tick() - lastReset >= 1 then
+		pickupCount = 0
+		lastReset = tick()
+	end
 	
 	local charPos = Player.Character:GetPivot().Position
 	
 	-- NORMAL ITEMS
 	if workspace:FindFirstChild("Items") then
 		for _,item in pairs(workspace.Items:GetChildren()) do
+			if pickupCount >= MAX_PICKUP_COUNT then break end
 			if not item:GetAttribute("EntityID") then continue end
 			
 			local distance = (charPos - item:GetPivot().Position).Magnitude
@@ -294,11 +393,13 @@ RunService.Heartbeat:Connect(function()
 			
 			if PICKUP_ALL then
 				Packets.Pickup.send(item:GetAttribute("EntityID"))
+				pickupCount += 1
 				continue
 			end
 			
 			if AUTO_PICKUP and table.find(Whitelist, item.Name) then
 				Packets.Pickup.send(item:GetAttribute("EntityID"))
+				pickupCount += 1
 			end
 		end
 	end
@@ -323,12 +424,15 @@ RunService.Heartbeat:Connect(function()
 		
 		if closestChest and closestDistance <= PICKUP_RADIUS then
 			for _,item in pairs(closestChest:GetChildren()) do
+				if pickupCount >= MAX_PICKUP_COUNT then break end
 				if not item:GetAttribute("EntityID") then continue end
 				
 				if CHEST_PICKUP_ALL then
 					Packets.Pickup.send(item:GetAttribute("EntityID"))
+					pickupCount += 1
 				elseif AUTO_PICKUP_CHESTS and table.find(Whitelist, item.Name) then
 					Packets.Pickup.send(item:GetAttribute("EntityID"))
+					pickupCount += 1
 				end
 			end
 		end
