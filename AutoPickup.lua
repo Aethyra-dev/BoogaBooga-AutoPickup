@@ -12,16 +12,23 @@ local ItemData = require(ReplicatedStorage.Modules.ItemData)
 --// SETTINGS
 local AUTO_PICKUP = false
 local PICKUP_ALL = false
+
+local AUTO_PICKUP_CHESTS = false
+local CHEST_PICKUP_ALL = false
+
 local PICKUP_RADIUS = 25
 local ItemList = {}
 local SelectedItem = nil
 
+local Whitelist = {}
+local SearchQuery = ""
 --// GUI
-local ScreenGui = Instance.new("ScreenGui", Player:WaitForChild("PlayerGui"))
+local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = Player:WaitForChild("PlayerGui")
 
 local ToggleUIBtn = Instance.new("TextButton")
-ToggleUIBtn.Size = UDim2.new(0,100,0,28) -- smaller
+ToggleUIBtn.Size = UDim2.new(0,100,0,28)
 ToggleUIBtn.Position = UDim2.new(0,12,0,12)
 ToggleUIBtn.Text = "Pickup UI"
 ToggleUIBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
@@ -31,9 +38,8 @@ ToggleUIBtn.TextSize = 12
 ToggleUIBtn.Parent = ScreenGui
 Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(0,6)
 
--- Smaller Window (reduced)
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0,260,0,340) -- smaller
+Main.Size = UDim2.new(0,260,0,340)
 Main.Position = UDim2.new(0.5,-130,0.5,-170)
 Main.BackgroundColor3 = Color3.fromRGB(20,20,20)
 Main.BorderSizePixel = 0
@@ -41,19 +47,32 @@ Main.Visible = false
 Main.Parent = ScreenGui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0,8)
 
--- 🔥 SAFE MOBILE SCALE (does NOT affect logic)
-local UIScale = Instance.new("UIScale")
-UIScale.Parent = Main
+-- FIXED UI TOGGLE
+ToggleUIBtn.MouseButton1Click:Connect(function()
+	Main.Visible = not Main.Visible
+end)
+
+-- Scale
+local UIScale = Instance.new("UIScale", Main)
 if UserInputService.TouchEnabled then
 	UIScale.Scale = 0.9
 end
 
 -- Title
 local TitleBar = Instance.new("Frame", Main)
-TitleBar.Size = UDim2.new(1,0,0,30) -- smaller
+TitleBar.Size = UDim2.new(1,0,0,30)
 TitleBar.BackgroundColor3 = Color3.fromRGB(28,28,28)
 TitleBar.BorderSizePixel = 0
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0,8)
+
+local Title = Instance.new("TextLabel", TitleBar)
+Title.Size = UDim2.new(1,0,1,0)
+Title.BackgroundTransparency = 1
+Title.Text = "Auto Pickup"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0,8)
 
 -- Content
 local Content = Instance.new("Frame", Main)
@@ -66,13 +85,13 @@ Layout.Padding = UDim.new(0,5)
 
 local function CreateButton(text,color,height)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1,0,0,height or 28) -- smaller buttons
+	b.Size = UDim2.new(1,0,0,height or 28)
 	b.Text = text
 	b.BackgroundColor3 = color
 	b.TextColor3 = Color3.new(1,1,1)
 	b.BorderSizePixel = 0
 	b.Font = Enum.Font.Gotham
-	b.TextSize = 12 -- smaller text
+	b.TextSize = 12
 	Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
 	b.Parent = Content
 	return b
@@ -80,6 +99,8 @@ end
 
 local Toggle = CreateButton("Auto Pickup: OFF", Color3.fromRGB(45,45,45))
 local PickupAllButton = CreateButton("Pickup ALL: OFF", Color3.fromRGB(60,45,45))
+local ChestToggle = CreateButton("Auto Pickup Chests: OFF", Color3.fromRGB(45,45,65))
+local ChestAllToggle = CreateButton("Chest Pickup ALL: OFF", Color3.fromRGB(65,45,65))
 
 -- Radius
 local RadiusBox = Instance.new("TextBox")
@@ -94,18 +115,13 @@ RadiusBox.TextSize = 12
 Instance.new("UICorner", RadiusBox).CornerRadius = UDim.new(0,6)
 RadiusBox.Parent = Content
 
--- Item Input
-local ItemBox = RadiusBox:Clone()
-ItemBox.PlaceholderText = "Item Name"
-ItemBox.Parent = Content
+local SearchBox = RadiusBox:Clone()
+SearchBox.PlaceholderText = "Search Items"
+SearchBox.Parent = Content
 
-local AddButton = CreateButton("Add Item", Color3.fromRGB(45,60,45))
-local RemoveButton = CreateButton("Remove Selected", Color3.fromRGB(60,40,40))
-local ClearButton = CreateButton("Clear List", Color3.fromRGB(60,35,35))
-
--- Scroll List
+-- Scroll
 local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1,0,0,90) -- smaller
+Scroll.Size = UDim2.new(1,0,0,110)
 Scroll.CanvasSize = UDim2.new(0,0,0,0)
 Scroll.ScrollBarThickness = 4
 Scroll.BackgroundColor3 = Color3.fromRGB(30,30,30)
@@ -116,60 +132,69 @@ Scroll.Parent = Content
 local ListLayout = Instance.new("UIListLayout", Scroll)
 ListLayout.Padding = UDim.new(0,3)
 
--- Dragging
-local dragging, dragStart, startPos
-TitleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = Main.Position
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - dragStart
-		Main.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-	end
-end)
-
--- Toggle UI
-ToggleUIBtn.MouseButton1Click:Connect(function()
-	Main.Visible = not Main.Visible
-end)
-
--- Refresh List
 local function RefreshList()
 	for _,v in pairs(Scroll:GetChildren()) do
-		if v:IsA("TextButton") then v:Destroy() end
+		if v:IsA("Frame") then
+			v:Destroy()
+		end
 	end
 	
 	for _,name in ipairs(ItemList) do
+		
+		-- SEARCH FILTER
+		if SearchQuery ~= "" then
+			if not string.find(string.lower(name), string.lower(SearchQuery)) then
+				continue
+			end
+		end
+		
+		local holder = Instance.new("Frame")
+		holder.Size = UDim2.new(1,-4,0,25)
+		holder.BackgroundTransparency = 1
+		holder.Parent = Scroll
+		
 		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1,-4,0,25)
+		btn.Size = UDim2.new(1,-26,1,0)
 		btn.Text = name
-		print(name)
-		btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+		btn.BackgroundColor3 = table.find(Whitelist,name)
+			and Color3.fromRGB(60,140,60) -- GREEN
+			or Color3.fromRGB(50,50,50)
 		btn.TextColor3 = Color3.new(1,1,1)
 		btn.BorderSizePixel = 0
 		btn.Font = Enum.Font.Gotham
 		btn.TextSize = 12
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0,5)
-		btn.Parent = Scroll
+		btn.Parent = holder
 		
+		local removeX = Instance.new("TextButton")
+		removeX.Size = UDim2.new(0,22,1,0)
+		removeX.Position = UDim2.new(1,-22,0,0)
+		removeX.Text = "X"
+		removeX.BackgroundColor3 = Color3.fromRGB(120,40,40)
+		removeX.TextColor3 = Color3.new(1,1,1)
+		removeX.BorderSizePixel = 0
+		removeX.Font = Enum.Font.GothamBold
+		removeX.TextSize = 12
+		Instance.new("UICorner", removeX).CornerRadius = UDim.new(0,5)
+		removeX.Parent = holder
+		
+		-- CLICK TO ADD
 		btn.MouseButton1Click:Connect(function()
-			SelectedItem = name
+			if not table.find(Whitelist,name) then
+				table.insert(Whitelist,name)
+			end
+			RefreshList()
+		end)
+		
+		-- X TO REMOVE
+		removeX.MouseButton1Click:Connect(function()
+			for i,v in ipairs(Whitelist) do
+				if v == name then
+					table.remove(Whitelist,i)
+					break
+				end
+			end
+			RefreshList()
 		end)
 	end
 	
@@ -177,44 +202,47 @@ local function RefreshList()
 	Scroll.CanvasSize = UDim2.new(0,0,0,ListLayout.AbsoluteContentSize.Y + 4)
 end
 
--- Fetch all items
+-- Fetch all items (FILTERED)
 for itemName, data in pairs(ItemData) do
-    if type(data) == "table" then
-        table.insert(ItemList, itemName)
-    end
+	if type(data) == "table" then
+		
+		-- FILTER RULES // HEAVY FPS BOOST
+		if data.load ~= nil -- must have load value
+		then
+			table.insert(ItemList, itemName)
+		end
+		
+	end
 end
 
--- Priority table
+-- Priority table (UNCHANGED)
 local priority = {
-    ["Gold"] = 1,
-    ["Raw Gold"] = 2,
-    ["Coin2"] = 3,
-    ["Coin"] = 4,
-    ["Coin Stack"] = 5
+	["Gold"] = 1,
+	["Raw Gold"] = 2,
+	["Coin2"] = 3,
+	["Coin"] = 4,
+	["Coin Stack"] = 5
 }
 
--- Sort by priority (then alphabetically)
+-- Sort by priority (UNCHANGED)
 table.sort(ItemList, function(a, b)
-    local aPriority = priority[a]
-    local bPriority = priority[b]
+	local aPriority = priority[a]
+	local bPriority = priority[b]
 
-    if aPriority and bPriority then
-        return aPriority < bPriority
-    elseif aPriority then
-        return true
-    elseif bPriority then
-        return false
-    else
-        return a < b -- sort alphabetically if no priority
-    end
+	if aPriority and bPriority then
+		return aPriority < bPriority
+	elseif aPriority then
+		return true
+	elseif bPriority then
+		return false
+	else
+		return a < b
+	end
 end)
 
 RefreshList()
 
----------------------------------------------------
 -- BUTTON LOGIC
----------------------------------------------------
-
 Toggle.MouseButton1Click:Connect(function()
 	AUTO_PICKUP = not AUTO_PICKUP
 	Toggle.Text = "Auto Pickup: "..(AUTO_PICKUP and "ON" or "OFF")
@@ -225,6 +253,16 @@ PickupAllButton.MouseButton1Click:Connect(function()
 	PickupAllButton.Text = "Pickup ALL: "..(PICKUP_ALL and "ON" or "OFF")
 end)
 
+ChestToggle.MouseButton1Click:Connect(function()
+	AUTO_PICKUP_CHESTS = not AUTO_PICKUP_CHESTS
+	ChestToggle.Text = "Auto Pickup Chests: "..(AUTO_PICKUP_CHESTS and "ON" or "OFF")
+end)
+
+ChestAllToggle.MouseButton1Click:Connect(function()
+	CHEST_PICKUP_ALL = not CHEST_PICKUP_ALL
+	ChestAllToggle.Text = "Chest Pickup ALL: "..(CHEST_PICKUP_ALL and "ON" or "OFF")
+end)
+
 RadiusBox.FocusLost:Connect(function()
 	local num = tonumber(RadiusBox.Text)
 	if num then
@@ -232,31 +270,8 @@ RadiusBox.FocusLost:Connect(function()
 	end
 end)
 
-AddButton.MouseButton1Click:Connect(function()
-	if ItemBox.Text ~= "" then
-		table.insert(ItemList, ItemBox.Text)
-		ItemBox.Text = ""
-		RefreshList()
-	end
-end)
-
-RemoveButton.MouseButton1Click:Connect(function()
-	if not SelectedItem then return end
-	
-	for i,v in ipairs(ItemList) do
-		if v == SelectedItem then
-			table.remove(ItemList,i)
-			break
-		end
-	end
-	
-	SelectedItem = nil
-	RefreshList()
-end)
-
-ClearButton.MouseButton1Click:Connect(function()
-	ItemList = {}
-	SelectedItem = nil
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	SearchQuery = SearchBox.Text
 	RefreshList()
 end)
 
@@ -265,36 +280,111 @@ end)
 ---------------------------------------------------
 
 RunService.Heartbeat:Connect(function()
-
 	if not Player.Character then return end
-	if not workspace:FindFirstChild("Items") then return end
 	
 	local charPos = Player.Character:GetPivot().Position
-
-	for _,item in pairs(workspace.Items:GetChildren()) do
-		if not item:GetAttribute("EntityID") then continue end
-		
-		local distance = (charPos - item:GetPivot().Position).Magnitude
-		if distance > PICKUP_RADIUS then continue end
-
-		-- Pickup ALL mode (independent)
-		if PICKUP_ALL then
-			Packets.Pickup.send(item:GetAttribute("EntityID"))
-			continue
+	
+	-- NORMAL ITEMS
+	if workspace:FindFirstChild("Items") then
+		for _,item in pairs(workspace.Items:GetChildren()) do
+			if not item:GetAttribute("EntityID") then continue end
+			
+			local distance = (charPos - item:GetPivot().Position).Magnitude
+			if distance > PICKUP_RADIUS then continue end
+			
+			if PICKUP_ALL then
+				Packets.Pickup.send(item:GetAttribute("EntityID"))
+				continue
+			end
+			
+			if AUTO_PICKUP and table.find(Whitelist, item.Name) then
+				Packets.Pickup.send(item:GetAttribute("EntityID"))
+			end
 		end
-
-		-- Whitelist mode
-		if AUTO_PICKUP and table.find(ItemList, item.Name) then
-			Packets.Pickup.send(item:GetAttribute("EntityID"))
+	end
+	
+	-- CHEST PICKUP (CLOSEST CHEST ONLY)
+	if (AUTO_PICKUP_CHESTS or CHEST_PICKUP_ALL)
+		and workspace:FindFirstChild("Deployables") then
+		
+		local closestChest = nil
+		local closestDistance = math.huge
+		
+		for _,model in pairs(workspace.Deployables:GetChildren()) do
+			local contents = model:FindFirstChild("Contents")
+			if contents and #contents:GetChildren() > 0 then
+				local dist = (charPos - model:GetPivot().Position).Magnitude
+				if dist < closestDistance then
+					closestDistance = dist
+					closestChest = contents
+				end
+			end
+		end
+		
+		if closestChest and closestDistance <= PICKUP_RADIUS then
+			for _,item in pairs(closestChest:GetChildren()) do
+				if not item:GetAttribute("EntityID") then continue end
+				
+				if CHEST_PICKUP_ALL then
+					Packets.Pickup.send(item:GetAttribute("EntityID"))
+				elseif AUTO_PICKUP_CHESTS and table.find(Whitelist, item.Name) then
+					Packets.Pickup.send(item:GetAttribute("EntityID"))
+				end
+			end
 		end
 	end
 end)
 
-RefreshList()
+---------------------------------------------------
+-- DRAG SYSTEM
+---------------------------------------------------
 
-local VirtualUser         = game:GetService("VirtualUser")
+local UIS = game:GetService("UserInputService")
+
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+local function update(input)
+	local delta = input.Position - dragStart
+	
+	Main.Position = UDim2.new(
+		startPos.X.Scale,
+		startPos.X.Offset + delta.X,
+		startPos.Y.Scale,
+		startPos.Y.Offset + delta.Y
+	)
+end
+
+TitleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		
+		dragging = true
+		dragStart = input.Position
+		startPos = Main.Position
+	end
+end)
+
+TitleBar.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+UIS.InputChanged:Connect(function(input)
+	if dragging then
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+			update(input)
+		end
+	end
+end)
+
+-- Anti Idle
+local VirtualUser = game:GetService("VirtualUser")
 Player.Idled:Connect(function()
 	VirtualUser:CaptureController()
 	VirtualUser:ClickButton2(Vector2.new(0, 0))
-	print("You went Idle, but we stopped that from happening!")
 end)
