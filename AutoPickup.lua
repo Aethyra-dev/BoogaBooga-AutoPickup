@@ -64,7 +64,7 @@ end
 
 -- Title
 local TitleBar = Instance.new("Frame", Main)
-TitleBar.Size = UDim2.new(1,0,0,30)
+TitleBar.Size = UDim2.new(1,0,0,25)
 TitleBar.BackgroundColor3 = Color3.fromRGB(28,28,28)
 TitleBar.BorderSizePixel = 0
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0,8)
@@ -87,9 +87,9 @@ Content.BackgroundTransparency = 1
 local Layout = Instance.new("UIListLayout", Content)
 Layout.Padding = UDim.new(0,5)
 
-local function CreateButton(text,color,height)
+local function CreateButton(text,color)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1,0,0,height or 28)
+	b.Size = UDim2.new(1,0,0,20)
 	b.Text = text
 	b.BackgroundColor3 = color
 	b.TextColor3 = Color3.new(1,1,1)
@@ -108,7 +108,7 @@ local ChestAllToggle = CreateButton("Chest Pickup ALL: OFF", Color3.fromRGB(65,4
 
 -- Radius
 local RadiusBox = Instance.new("TextBox")
-RadiusBox.Size = UDim2.new(1,0,0,26)
+RadiusBox.Size = UDim2.new(1,0,0,20)
 RadiusBox.PlaceholderText = "Pickup Radius"
 RadiusBox.Text = ""
 RadiusBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
@@ -122,7 +122,6 @@ RadiusBox.Parent = Content
 local SearchBox = RadiusBox:Clone()
 SearchBox.PlaceholderText = "Search Items"
 SearchBox.Parent = Content
-
 
 local SliderHolder = Instance.new("Frame")
 SliderHolder.Size = UDim2.new(1,0,0,50)
@@ -443,48 +442,59 @@ end)
 -- DRAG SYSTEM
 ---------------------------------------------------
 
-local UIS = game:GetService("UserInputService")
+-- DRAG SYSTEM WITH SCREEN BOUNDS
+local Camera = workspace.CurrentCamera
 
-local dragging = false
-local dragStart = nil
-local startPos = nil
+local function makeDraggable(dragObject, dragHandle)
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
 
-local function update(input)
-	local delta = input.Position - dragStart
-	
-	Main.Position = UDim2.new(
-		startPos.X.Scale,
-		startPos.X.Offset + delta.X,
-		startPos.Y.Scale,
-		startPos.Y.Offset + delta.Y
-	)
+	local function update(input)
+		local delta = input.Position - dragStart
+		local newX = startPos.X.Offset + delta.X
+		local newY = startPos.Y.Offset + delta.Y
+
+		-- SCREEN BOUNDS
+		local screenSize = Camera.ViewportSize
+		local objSize = dragObject.AbsoluteSize
+
+		newX = math.clamp(newX, 0, screenSize.X - objSize.X)
+		newY = math.clamp(newY, 0, screenSize.Y - objSize.Y)
+
+		dragObject.Position = UDim2.new(0, newX, 0, newY)
+	end
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			
+			dragging = true
+			dragStart = input.Position
+			startPos = dragObject.Position
+		end
+	end)
+
+	dragHandle.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging then
+			if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+				update(input)
+			end
+		end
+	end)
 end
 
-TitleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-	or input.UserInputType == Enum.UserInputType.Touch then
-		
-		dragging = true
-		dragStart = input.Position
-		startPos = Main.Position
-	end
-end)
-
-TitleBar.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-	or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
-end)
-
-UIS.InputChanged:Connect(function(input)
-	if dragging then
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
-			update(input)
-		end
-	end
-end)
+-- APPLY TO BOTH
+makeDraggable(Main, TitleBar)
+makeDraggable(ToggleUIBtn, ToggleUIBtn)
 
 -- Anti Idle
 local VirtualUser = game:GetService("VirtualUser")
