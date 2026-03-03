@@ -16,6 +16,10 @@ local PICKUP_ALL = false
 local AUTO_PICKUP_CHESTS = false
 local CHEST_PICKUP_ALL = false
 
+local HIDE_DROPPED_ITEMS_WORKSPACE = false
+local HIDE_DROPPED_ITEMS_CHESTS = false
+local SHOW_PICKUP_AOE = false
+
 local PICKUP_RADIUS = 25
 local MAX_PICKUP_COUNT = 1400
 local MAX_CAP = 1500
@@ -85,7 +89,7 @@ Content.Size = UDim2.new(1,-16,1,-44)
 Content.BackgroundTransparency = 1
 
 local Layout = Instance.new("UIListLayout", Content)
-Layout.Padding = UDim.new(0,5)
+Layout.Padding = UDim.new(0,4)
 
 local function CreateButton(text,color)
 	local b = Instance.new("TextButton")
@@ -105,6 +109,9 @@ local Toggle = CreateButton("Auto Pickup: OFF", Color3.fromRGB(45,45,45))
 local PickupAllButton = CreateButton("Pickup ALL: OFF", Color3.fromRGB(60,45,45))
 local ChestToggle = CreateButton("Auto Pickup Chests: OFF", Color3.fromRGB(45,45,65))
 local ChestAllToggle = CreateButton("Chest Pickup ALL: OFF", Color3.fromRGB(65,45,65))
+local PickupShowAOEToggle = CreateButton("Show Pickup AOE: OFF", Color3.fromRGB(51, 65, 45))
+local HideDroppedItemsWorkspace = CreateButton("Hide Dropped Items in Workspace: OFF", Color3.fromRGB(45, 65, 63))
+local HideDroppedItemsChests = CreateButton("Hide Dropped Items in Chests: OFF", Color3.fromRGB(45, 65, 63))
 
 -- Radius
 local RadiusBox = Instance.new("TextBox")
@@ -210,7 +217,7 @@ end)
 
 -- Scroll
 local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1,0,0,110)
+Scroll.Size = UDim2.new(1,0,0,55)
 Scroll.CanvasSize = UDim2.new(0,0,0,0)
 Scroll.ScrollBarThickness = 4
 Scroll.BackgroundColor3 = Color3.fromRGB(30,30,30)
@@ -219,7 +226,7 @@ Instance.new("UICorner", Scroll).CornerRadius = UDim.new(0,6)
 Scroll.Parent = Content
 
 local ListLayout = Instance.new("UIListLayout", Scroll)
-ListLayout.Padding = UDim.new(0,3)
+ListLayout.Padding = UDim.new(0,5)
 
 local function RefreshList()
 	for _,v in pairs(Scroll:GetChildren()) do
@@ -238,7 +245,7 @@ local function RefreshList()
 		end
 		
 		local holder = Instance.new("Frame")
-		holder.Size = UDim2.new(1,-4,0,25)
+		holder.Size = UDim2.new(1,-4,0,20)
 		holder.BackgroundTransparency = 1
 		holder.Parent = Scroll
 		
@@ -331,6 +338,41 @@ end)
 
 RefreshList()
 
+local PickupAOEFolder = Instance.new("Folder")
+PickupAOEFolder.Name = "PickupAOE"
+PickupAOEFolder.Parent = workspace
+
+local RING_SEGMENTS = 40 -- higher = smoother
+
+local function updateRing(position, radius)
+	
+	-- Clear old segments
+	PickupAOEFolder:ClearAllChildren()
+	
+	for i = 1, RING_SEGMENTS do
+		local angle = (i / RING_SEGMENTS) * math.pi * 2
+		
+		local x = math.cos(angle) * radius
+		local z = math.sin(angle) * radius
+		
+		local segment = Instance.new("Part")
+		segment.Anchored = true
+		segment.CanCollide = false
+		segment.CanQuery = false
+		segment.CanTouch = false
+		segment.Material = Enum.Material.Neon
+		segment.Color = Color3.fromRGB(255, 0, 0)
+		segment.Transparency = 0.1
+		segment.Size = Vector3.new(0.3, 0.3, radius * 0.15)
+		
+		segment.CFrame =
+			CFrame.new(position + Vector3.new(x, 0.05, z)) *
+			CFrame.Angles(0, -angle, 0)
+		
+		segment.Parent = PickupAOEFolder
+	end
+end	
+
 -- BUTTON LOGIC
 Toggle.MouseButton1Click:Connect(function()
 	AUTO_PICKUP = not AUTO_PICKUP
@@ -350,6 +392,21 @@ end)
 ChestAllToggle.MouseButton1Click:Connect(function()
 	CHEST_PICKUP_ALL = not CHEST_PICKUP_ALL
 	ChestAllToggle.Text = "Chest Pickup ALL: "..(CHEST_PICKUP_ALL and "ON" or "OFF")
+end)
+
+PickupShowAOEToggle.MouseButton1Click:Connect(function()
+	SHOW_PICKUP_AOE = not SHOW_PICKUP_AOE
+	PickupShowAOEToggle.Text = "Show Pickup AOE: "..(SHOW_PICKUP_AOE and "ON" or "OFF")
+end)
+
+HideDroppedItemsWorkspace.MouseButton1Click:Connect(function()
+	HIDE_DROPPED_ITEMS_WORKSPACE = not HIDE_DROPPED_ITEMS_WORKSPACE
+	HideDroppedItemsWorkspace.Text = "Hide Dropped Items in Workspace: "..(HIDE_DROPPED_ITEMS_WORKSPACE and "ON" or "OFF")
+end)
+
+HideDroppedItemsChests.MouseButton1Click:Connect(function()
+	HIDE_DROPPED_ITEMS_CHESTS = not HIDE_DROPPED_ITEMS_CHESTS
+	HideDroppedItemsChests.Text = "Hide Dropped Items in Chests: "..(HIDE_DROPPED_ITEMS_CHESTS and "ON" or "OFF")
 end)
 
 RadiusBox.FocusLost:Connect(function()
@@ -436,6 +493,71 @@ RunService.Heartbeat:Connect(function()
 			end
 		end
 	end
+end)
+
+RunService.Heartbeat:Connect(function()
+
+	-- NORMAL DROPPED ITEMS
+	if workspace:FindFirstChild("Items") then
+		for _, item in pairs(workspace.Items:GetChildren()) do
+			if not item:GetAttribute("EntityID") then continue end
+			
+			local shouldHide = HIDE_DROPPED_ITEMS_WORKSPACE
+			
+			if item:IsA("BasePart") then
+				item.LocalTransparencyModifier = shouldHide and 1 or 0
+			
+			elseif item:IsA("Model") then
+				for _, obj in pairs(item:GetDescendants()) do
+					if obj:IsA("BasePart") then
+						obj.LocalTransparencyModifier = shouldHide and 1 or 0
+					end
+				end
+			end
+		end
+	end
+
+	-- CHEST DROPPED ITEMS
+	if workspace:FindFirstChild("Deployables") then
+		for _, model in pairs(workspace.Deployables:GetChildren()) do
+			local contents = model:FindFirstChild("Contents")
+			if not contents then continue end
+			
+			for _, item in pairs(contents:GetChildren()) do
+				if not item:GetAttribute("EntityID") then continue end
+				
+				local shouldHide = HIDE_DROPPED_ITEMS_CHESTS
+				
+				if item:IsA("BasePart") then
+					item.LocalTransparencyModifier = shouldHide and 1 or 0
+				
+				elseif item:IsA("Model") then
+					for _, obj in pairs(item:GetDescendants()) do
+						if obj:IsA("BasePart") then
+							obj.LocalTransparencyModifier = shouldHide and 1 or 0
+						end
+					end
+				end
+			end
+		end
+	end
+
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then
+		PickupAOEFolder:ClearAllChildren()
+		return
+	end
+	
+	if not SHOW_PICKUP_AOE then
+		PickupAOEFolder:ClearAllChildren()
+		return
+	end
+	
+	local root = Player.Character.HumanoidRootPart
+	
+	updateRing(root.Position - Vector3.new(0, root.Size.Y/2, 0), PICKUP_RADIUS)
 end)
 
 ---------------------------------------------------
