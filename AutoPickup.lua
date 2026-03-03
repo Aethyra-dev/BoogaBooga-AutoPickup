@@ -21,7 +21,7 @@ local HIDE_DROPPED_ITEMS_CHESTS = false
 local SHOW_PICKUP_AOE = false
 
 local PICKUP_RADIUS = 25
-local MAX_PICKUP_COUNT = 1400
+local MAX_PICKUP_COUNT = 1500
 local MAX_CAP = 1500
 local pickupCount = 0
 local ItemList = {}
